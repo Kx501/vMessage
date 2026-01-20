@@ -21,6 +21,7 @@ import com.velocitypowered.api.proxy.Player;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import off.szymon.vmessage.VMessagePlugin;
 import off.szymon.vmessage.config.ConfigManager;
+import off.szymon.vmessage.onebot.OneBotListener;
 
 import java.util.Optional;
 
@@ -59,6 +60,12 @@ public class VMessageCommand {
                                 .executes(ctx -> {
                                     ConfigManager.get().load();
                                     VMessagePlugin.get().getBroadcaster().reload();
+                                    // Reload OneBot client and listener if enabled
+                                    VMessagePlugin.get().getBroadcaster().reloadOneBot();
+                                    OneBotListener oneBotListener = VMessagePlugin.get().getOneBotListener();
+                                    if (oneBotListener != null) {
+                                        oneBotListener.reload();
+                                    }
                                     ctx.getSource().sendMessage(MiniMessage.miniMessage().deserialize("<#00ffff>vMessage</#00ffff> config reloaded!"));
                                     return 1;
                                 })

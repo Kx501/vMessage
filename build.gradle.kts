@@ -68,6 +68,11 @@ dependencies {
 
     /* Usage Statistics */
     implementation("org.bstats:bstats-velocity:3.1.0")
+
+    /* HTTP Server for OneBot callback */
+    implementation("org.eclipse.jetty:jetty-server:10.0.18")
+    implementation("org.eclipse.jetty:jetty-servlet:10.0.18")
+    implementation("com.google.code.gson:gson:2.10.1")
 }
 
 /* Generate Version.java */
@@ -114,6 +119,8 @@ tasks.shadowJar {
     relocate("kotlin", "off.szymon.vmessage.libs.kotlin")
     relocate("org.spongepowered.configurate", "off.szymon.vmessage.libs.configurate")
     relocate("org.bstats", "off.szymon.vmessage.libs.bstats")
+    relocate("org.eclipse.jetty", "off.szymon.vmessage.libs.jetty")
+    relocate("javax.servlet", "off.szymon.vmessage.libs.servlet")
 }
 
 tasks.build {

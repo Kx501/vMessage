@@ -32,6 +32,7 @@ import off.szymon.vmessage.compatibility.mute.LibertyBansCompatibilityProvider;
 import off.szymon.vmessage.compatibility.mute.LiteBansCompatibilityProvider;
 import off.szymon.vmessage.compatibility.mute.MutePluginCompatibilityProvider;
 import off.szymon.vmessage.config.ConfigManager;
+import off.szymon.vmessage.onebot.OneBotListener;
 import org.bstats.charts.AdvancedPie;
 import org.bstats.charts.SimplePie;
 import org.bstats.velocity.Metrics;
@@ -74,6 +75,7 @@ public class VMessagePlugin {
     private MutePluginCompatibilityProvider mutePluginCompatibilityProvider;
     private LuckPermsCompatibilityProvider lpCompatibilityProvider;
     private Broadcaster broadcaster;
+    private OneBotListener oneBotListener;
     private final Metrics.Factory metricsFactory;
 
     @Inject
@@ -154,9 +156,27 @@ public class VMessagePlugin {
         broadcaster = new Broadcaster();
         server.getEventManager().register(this, new Listener());
 
+        /* OneBot Integration */
+        if (ConfigManager.get().getConfig().getOnebot().getEnabled()) {
+            logger.info("OneBot integration enabled, initializing...");
+            try {
+                oneBotListener = new OneBotListener();
+                oneBotListener.start();
+                broadcaster.reloadOneBot();
+                logger.info("OneBot integration initialized successfully");
+            } catch (Exception e) {
+                logger.error("Failed to initialize OneBot integration: {}", e.getMessage(), e);
+                oneBotListener = null;
+            }
+        } else {
+            logger.info("OneBot integration disabled");
+        }
+
         CommandHandler.registerCommands();
 
-        checkForUpdates();
+        if (ConfigManager.get().getConfig().getCheckUpdates()) {
+            checkForUpdates();
+        }
 
         Metrics metrics = metricsFactory.make(this, 27241);
 
@@ -185,6 +205,9 @@ public class VMessagePlugin {
     }
 
     public void onDisable() {
+        if (oneBotListener != null) {
+            oneBotListener.stop();
+        }
         System.out.println(this.name + " disabled");
     }
 
@@ -215,6 +238,10 @@ public class VMessagePlugin {
 
     public Broadcaster getBroadcaster() {
         return broadcaster;
+    }
+
+    public OneBotListener getOneBotListener() {
+        return oneBotListener;
     }
 
     public PluginContainer getPlugin() {

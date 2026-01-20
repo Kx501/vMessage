@@ -25,6 +25,10 @@ class MainConfig {
     var luckPermsMeta = LuckPermsMetaConfig()
     @Comment("If you want to display a different name for a server you can add it here\nIt will then be used in the messages above instead of the server's actual name")
     var serverAliases = ServerAliasesConfig()
+    @Comment("OneBot protocol integration for QQ group message syncing")
+    var onebot = OneBotConfig()
+    @Comment("Whether to check for updates on plugin startup")
+    var checkUpdates = true
     @Comment("This option is here for safety when updating the plugin from an older version\nWARNING: This will overwrite the previous backup (config.yml.bak)")
     var backupConfig = true
 }
@@ -125,4 +129,64 @@ class ServerAliasesConfig {
     var lobby = "Lobby"
     var lobby1 = "Lobby"
     var lobby2 = "Lobby"
+}
+
+/* OneBot Config */
+@ConfigSerializable
+class OneBotConfig {
+    var enabled = false
+    @Comment("NapCat HTTP API base URL (without path, path is fixed as /send_group_msg)")
+    var apiUrl = "http://localhost:6727"
+    @Comment("Access token for sending messages to NapCat API (leave empty to disable authentication)")
+    var accessTokenSend = ""
+    @Comment("Access token for verifying incoming callbacks from NapCat (leave empty to disable authentication)")
+    var accessTokenCallback = ""
+    @Comment("Target QQ group ID")
+    var groupId = ""
+    var callback = OneBotCallbackConfig()
+    var forwardToQq = OneBotForwardToQQConfig()
+    @Comment("Whether to forward QQ group messages to game")
+    var forwardToGame = true
+    @Comment("Enable debug logging for OneBot integration (shows detailed token verification and request information)")
+    var debug = false
+    var format = OneBotFormatConfig()
+}
+
+@ConfigSerializable
+class OneBotCallbackConfig {
+    var enabled = true
+    @Comment("Host to listen on for HTTP callback")
+    var host = "0.0.0.0"
+    @Comment("Port to listen on for HTTP callback")
+    var port = 8080
+    @Comment("Callback path")
+    var path = "/onebot/callback"
+}
+
+@ConfigSerializable
+class OneBotForwardToQQConfig {
+    @Comment("Whether to forward chat messages to QQ group")
+    var chat = true
+    @Comment("Whether to forward join messages to QQ group")
+    var join = true
+    @Comment("Whether to forward leave messages to QQ group")
+    var leave = true
+    @Comment("Whether to forward server change messages to QQ group")
+    var change = true
+    @Comment("Whether to forward broadcast messages to QQ group")
+    var broadcast = true
+    @Comment("Delay time in seconds before sending leave messages. If player rejoins during this delay, the leave message is cancelled and the join message is filtered (not sent)")
+    var leaveDelay = 15
+}
+
+@ConfigSerializable
+class OneBotFormatConfig {
+    @Comment("%player% - Player name\n%message% - Message content\n%server% - Server name\n%old_server% - Previous server\n%new_server% - New server")
+    var chat = "[游戏] %player%: %message%"
+    var join = "[游戏] %player% 加入了服务器"
+    var leave = "[游戏] %player% 离开了服务器"
+    var change = "[游戏] %player% 从 %old_server% 切换到 %new_server%"
+    var broadcast = "[广播] %message%"
+    @Comment("Message format for forwarding QQ group messages to game\n%message% - Message content from QQ\n%sender% - Sender nickname\n%sender_id% - Sender QQ number\n%sender_role% - Sender role (owner/admin/member)")
+    var toGame = "[QQ群] %sender%: %message%"
 }

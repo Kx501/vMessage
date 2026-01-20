@@ -16,6 +16,7 @@ import com.velocitypowered.api.proxy.Player;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import off.szymon.vmessage.compatibility.LuckPermsCompatibilityProvider;
 import off.szymon.vmessage.config.ConfigManager;
+import off.szymon.vmessage.onebot.OneBotClient;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.configurate.CommentedConfigurationNode;
 
@@ -23,12 +24,18 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import com.velocitypowered.api.scheduler.ScheduledTask;
 
 public class Broadcaster {
 
     private final HashMap<String,String> serverAliases; // Server name, Server alias
     private final LuckPermsCompatibilityProvider lp;
     private final HashMap<String,String> metaPlaceholders; // Placeholder, Meta key
+    private OneBotClient oneBotClient;
+    // Pending leave messages (for delay and rejoin filtering)
+    private final ConcurrentHashMap<String, ScheduledTask> pendingLeaveTasks = new ConcurrentHashMap<>();
 
     public Broadcaster() {
         serverAliases = new HashMap<>();
@@ -39,6 +46,11 @@ public class Broadcaster {
 
         metaPlaceholders = new HashMap<>();
         reloadMetaPlaceholders();
+
+        /* OneBot */
+        if (ConfigManager.get().getConfig().getOnebot().getEnabled()) {
+            oneBotClient = new OneBotClient();
+        }
     }
 
     public void message(Player player, String message) {
@@ -66,6 +78,12 @@ public class Broadcaster {
             }
         }
         VMessagePlugin.get().getServer().sendMessage(MiniMessage.miniMessage().deserialize(msg));
+        
+        // Send to OneBot/QQ group if enabled
+        if (oneBotClient != null && ConfigManager.get().getConfig().getOnebot().getForwardToQq().getChat()) {
+            String qqMessage = formatMessageForQQ("chat", player.getUsername(), escapeMiniMessage(message), parseAlias(player.getCurrentServer().get().getServerInfo().getName()), null);
+            oneBotClient.sendGroupMessage(qqMessage);
+        }
     }
 
     public void join(Player player) {
@@ -95,6 +113,23 @@ public class Broadcaster {
             }
         }
         VMessagePlugin.get().getServer().sendMessage(MiniMessage.miniMessage().deserialize(msg));
+        
+        // Send to OneBot/QQ group if enabled (with rejoin filtering)
+        if (oneBotClient != null && ConfigManager.get().getConfig().getOnebot().getForwardToQq().getJoin()) {
+            String playerName = player.getUsername();
+            
+            // Check if there's a pending leave message (player rejoined during delay)
+            ScheduledTask pendingLeave = pendingLeaveTasks.remove(playerName);
+            if (pendingLeave != null) {
+                // Cancel leave message and filter out join message (fast rejoin)
+                pendingLeave.cancel();
+                VMessagePlugin.get().getLogger().debug("Cancelled pending leave message for {} and filtered join message due to fast rejoin", playerName);
+            } else {
+                // Normal join, send message
+                String qqMessage = formatMessageForQQ("join", playerName, null, parseAlias(player.getCurrentServer().get().getServerInfo().getName()), null);
+                oneBotClient.sendGroupMessage(qqMessage);
+            }
+        }
     }
 
     public void leave(Player player) {
@@ -132,6 +167,31 @@ public class Broadcaster {
             }
         }
         VMessagePlugin.get().getServer().sendMessage(MiniMessage.miniMessage().deserialize(msg));
+        
+        // Send to OneBot/QQ group if enabled (with delay for rejoin filtering)
+        if (oneBotClient != null && ConfigManager.get().getConfig().getOnebot().getForwardToQq().getLeave()) {
+            String playerName = player.getUsername();
+            int delay = ConfigManager.get().getConfig().getOnebot().getForwardToQq().getLeaveDelay() * 1000;
+            
+            // Prepare message
+            String qqMessage = formatMessageForQQ("leave", playerName, null, serverName, null);
+            
+            // Delay sending leave message (if player rejoins during delay, this will be cancelled)
+            ScheduledTask task = VMessagePlugin.get().getServer().getScheduler()
+                .buildTask(VMessagePlugin.get(), () -> {
+                    // Check if player rejoined during delay (task might have been cancelled)
+                    if (!pendingLeaveTasks.containsKey(playerName)) {
+                        return; // Task was cancelled due to rejoin
+                    }
+                    pendingLeaveTasks.remove(playerName);
+                    oneBotClient.sendGroupMessage(qqMessage);
+                })
+                .delay(delay, TimeUnit.MILLISECONDS)
+                .schedule();
+            
+            pendingLeaveTasks.put(playerName, task);
+            VMessagePlugin.get().getLogger().debug("Scheduled leave message for {} with {}ms delay", playerName, delay);
+        }
     }
 
     public void change(Player player, String oldServer) {
@@ -165,6 +225,13 @@ public class Broadcaster {
             }
         }
         VMessagePlugin.get().getServer().sendMessage(MiniMessage.miniMessage().deserialize(msg));
+        
+        // Send to OneBot/QQ group if enabled
+        if (oneBotClient != null && ConfigManager.get().getConfig().getOnebot().getForwardToQq().getChange()) {
+            String newServer = parseAlias(player.getCurrentServer().get().getServerInfo().getName());
+            String qqMessage = formatMessageForQQ("change", player.getUsername(), null, newServer, parseAlias(oldServer));
+            oneBotClient.sendGroupMessage(qqMessage);
+        }
     }
 
     public void reload() {
@@ -229,6 +296,12 @@ public class Broadcaster {
         }
 
         VMessagePlugin.get().getServer().sendMessage(MiniMessage.miniMessage().deserialize(msg));
+        
+        // Send to OneBot/QQ group if enabled
+        if (oneBotClient != null && ConfigManager.get().getConfig().getOnebot().getForwardToQq().getBroadcast()) {
+            String qqMessage = formatMessageForQQ("broadcast", player != null ? player.getUsername() : "Server", message, null, null);
+            oneBotClient.sendGroupMessage(qqMessage);
+        }
     }
 
     public String parseAlias(String serverName) {
@@ -248,5 +321,59 @@ public class Broadcaster {
 
     private String escapeMiniMessage(String input) {
         return ConfigManager.get().getConfig().getMessages().getChat().getAllowMiniMessage() ? input : MiniMessage.miniMessage().escapeTags(input);
+    }
+
+    private String formatMessageForQQ(String type, String player, String message, String server, String oldServer) {
+        var formatConfig = ConfigManager.get().getConfig().getOnebot().getFormat();
+        String format;
+        
+        switch (type) {
+            case "chat":
+                format = formatConfig.getChat();
+                break;
+            case "join":
+                format = formatConfig.getJoin();
+                break;
+            case "leave":
+                format = formatConfig.getLeave();
+                break;
+            case "change":
+                format = formatConfig.getChange();
+                break;
+            case "broadcast":
+                format = formatConfig.getBroadcast();
+                break;
+            default:
+                return "";
+        }
+        
+        // Replace placeholders
+        if (player != null) {
+            format = format.replace("%player%", player);
+        }
+        if (message != null) {
+            format = format.replace("%message%", message);
+        }
+        if (server != null) {
+            format = format.replace("%server%", server);
+            format = format.replace("%new_server%", server);
+        }
+        if (oldServer != null) {
+            format = format.replace("%old_server%", oldServer);
+        }
+        
+        // Remove any remaining placeholders
+        format = format.replaceAll("%[a-z_]+%", "");
+        
+        return format;
+    }
+
+    public void reloadOneBot() {
+        if (ConfigManager.get().getConfig().getOnebot().getEnabled()) {
+            // Always recreate to pick up config changes (groupId, apiUrl, accessToken)
+            oneBotClient = new OneBotClient();
+        } else {
+            oneBotClient = null;
+        }
     }
 }
