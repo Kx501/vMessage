@@ -95,6 +95,8 @@ public class OneBotListener {
             }
 
             baseRequest.setHandled(true);
+            
+            response.setContentType("application/json; charset=utf-8");
 
             try {
                 // Verify token if configured
@@ -150,7 +152,7 @@ public class OneBotListener {
                         VMessagePlugin.get().getLogger().warn("OneBot callback token verification failed - Received token from {}: {}, Expected: {}", 
                             tokenSource != null ? tokenSource : "unknown", tokenPreview, configTokenPreview);
                         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                        response.getWriter().write("Unauthorized");
+                        response.getWriter().write("{}");
                         return;
                     }
                 }
@@ -171,7 +173,7 @@ public class OneBotListener {
 
                 if (!"message".equals(postType) || !"group".equals(messageType)) {
                     response.setStatus(HttpServletResponse.SC_OK);
-                    response.getWriter().write("OK");
+                    response.getWriter().write("{}");
                     return;
                 }
 
@@ -193,7 +195,7 @@ public class OneBotListener {
                     if (eventGroupId == null || !eventGroupId.equals(configuredGroupId)) {
                         // Group ID doesn't match, ignore this message
                         response.setStatus(HttpServletResponse.SC_OK);
-                        response.getWriter().write("OK");
+                        response.getWriter().write("{}");
                         return;
                     }
                 }
@@ -201,7 +203,7 @@ public class OneBotListener {
                 // Check if forwarding to game is enabled
                 if (!ConfigManager.get().getConfig().getOnebot().getForwardToGame()) {
                     response.setStatus(HttpServletResponse.SC_OK);
-                    response.getWriter().write("OK");
+                    response.getWriter().write("{}");
                     return;
                 }
 
@@ -244,41 +246,32 @@ public class OneBotListener {
                 }
 
                 response.setStatus(HttpServletResponse.SC_OK);
-                response.getWriter().write("OK");
+                response.getWriter().write("{}");
             } catch (Exception e) {
                 VMessagePlugin.get().getLogger().warn("Error processing OneBot callback: {}", e.getMessage());
                 response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-                response.getWriter().write("ERROR");
+                response.getWriter().write("{}");
             }
         }
 
         private String extractMessageText(JsonObject event) {
-            // Try to get raw_message first (plain text)
-            if (event.has("raw_message")) {
-                return event.get("raw_message").getAsString();
-            }
+            // Prefer structured message segments (NapCat message_format=array)
+            JsonArray message = event.getAsJsonArray("message");
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < message.size(); i++) {
+                JsonObject seg = message.get(i).getAsJsonObject();
+                String type = seg.get("type").getAsString();
+                JsonObject data = seg.getAsJsonObject("data");
 
-            // Otherwise, parse message array
-            if (event.has("message") && event.get("message").isJsonArray()) {
-                JsonArray messageArray = event.get("message").getAsJsonArray();
-                StringBuilder text = new StringBuilder();
-
-                for (int i = 0; i < messageArray.size(); i++) {
-                    JsonObject segment = messageArray.get(i).getAsJsonObject();
-                    String type = segment.has("type") ? segment.get("type").getAsString() : "";
-
-                    if ("text".equals(type) && segment.has("data")) {
-                        JsonObject data = segment.get("data").getAsJsonObject();
-                        if (data.has("text")) {
-                            text.append(data.get("text").getAsString());
-                        }
-                    }
+                if ("text".equals(type)) {
+                    sb.append(data.get("text").getAsString());
+                } else if ("image".equals(type)) {
+                    String url = data.get("url").getAsString();
+                    String summary = data.get("summary").getAsString();
+                    sb.append("[[CICode,url=").append(url).append(",name=").append(summary).append("]]");
                 }
-
-                return text.toString();
             }
-
-            return null;
+            return sb.toString();
         }
     }
 }
