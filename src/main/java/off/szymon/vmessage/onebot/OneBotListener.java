@@ -28,7 +28,14 @@ import org.eclipse.jetty.server.handler.AbstractHandler;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 
 public class OneBotListener {
@@ -36,10 +43,15 @@ public class OneBotListener {
     private Server server;
     private final Gson gson;
     private final ProxyServer proxyServer;
+    private final HttpClient httpClient;
+    private final Map<String, String> groupMemberNames = new ConcurrentHashMap<>();
 
     public OneBotListener() {
         this.gson = new Gson();
         this.proxyServer = VMessagePlugin.get().getServer();
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
     }
 
     public void start() {
@@ -54,6 +66,8 @@ public class OneBotListener {
         String path = callbackConfig.getPath();
 
         try {
+            loadGroupMembers();
+
             server = new Server(port);
             server.setHandler(new OneBotCallbackHandler(path));
             server.start();
@@ -77,7 +91,108 @@ public class OneBotListener {
 
     public void reload() {
         stop();
+        groupMemberNames.clear();
         start();
+    }
+
+    private static String sanitizeDisplayName(String s) {
+        if (s == null || s.isEmpty()) {
+            return s;
+        }
+        // Strip common Unicode bidirectional control characters to prevent visual reordering.
+        // Includes: LRE/RLE/PDF/LRO/RLO (U+202A..U+202E),
+        //           LRI/RLI/FSI/PDI (U+2066..U+2069),
+        //           LRM/RLM (U+200E/U+200F),
+        //           ALM (U+061C)
+        return s.replaceAll("[\\u202A-\\u202E\\u2066-\\u2069\\u200E\\u200F\\u061C]", "");
+    }
+
+    private void loadGroupMembers() {
+        var onebotConfig = ConfigManager.get().getConfig().getOnebot();
+        if (!onebotConfig.getEnabled()) {
+            return;
+        }
+
+        String groupId = onebotConfig.getGroupId();
+        if (groupId == null || groupId.isEmpty()) {
+            // Treat as disabled: nothing to load
+            return;
+        }
+
+        String apiUrl = onebotConfig.getApiUrl();
+        if (apiUrl == null || apiUrl.isEmpty()) {
+            VMessagePlugin.get().getLogger().warn("OneBot api-url is not configured; cannot load group member list");
+            return;
+        }
+
+        String accessToken = onebotConfig.getAccessTokenSend();
+
+        try {
+            String url = apiUrl.endsWith("/") ? apiUrl + "get_group_member_list" : apiUrl + "/get_group_member_list";
+
+            JsonObject requestBody = new JsonObject();
+            // OneBot accepts number/string; we send as string to match config type
+            requestBody.addProperty("group_id", groupId);
+            requestBody.addProperty("no_cache", false);
+
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(requestBody), StandardCharsets.UTF_8))
+                    .timeout(Duration.ofSeconds(10));
+
+            if (accessToken != null && !accessToken.isEmpty()) {
+                requestBuilder.header("Authorization", "Bearer " + accessToken);
+            }
+
+            HttpResponse<String> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() != 200) {
+                VMessagePlugin.get().getLogger().warn("Failed to load OneBot group member list: HTTP {}", response.statusCode());
+                return;
+            }
+
+            JsonObject jsonResponse = gson.fromJson(response.body(), JsonObject.class);
+            String status = jsonResponse.has("status") ? jsonResponse.get("status").getAsString() : "";
+            int retcode = jsonResponse.has("retcode") ? jsonResponse.get("retcode").getAsInt() : -1;
+
+            if (!"ok".equals(status) || retcode != 0) {
+                String errorMsg = jsonResponse.has("message") ? jsonResponse.get("message").getAsString() : "Unknown error";
+                VMessagePlugin.get().getLogger().warn("Failed to load OneBot group member list: {} (retcode: {})", errorMsg, retcode);
+                return;
+            }
+
+            if (!jsonResponse.has("data") || !jsonResponse.get("data").isJsonArray()) {
+                VMessagePlugin.get().getLogger().warn("Failed to load OneBot group member list: missing data array");
+                return;
+            }
+
+            JsonArray data = jsonResponse.getAsJsonArray("data");
+            for (int i = 0; i < data.size(); i++) {
+                JsonObject member = data.get(i).getAsJsonObject();
+                if (!member.has("user_id")) {
+                    continue;
+                }
+
+                String userId = member.get("user_id").isJsonPrimitive() && member.get("user_id").getAsJsonPrimitive().isNumber()
+                        ? String.valueOf(member.get("user_id").getAsLong())
+                        : member.get("user_id").getAsString();
+
+                String card = member.has("card") ? member.get("card").getAsString() : "";
+                String nickname = member.has("nickname") ? member.get("nickname").getAsString() : "";
+                String name = (card != null && !card.isEmpty()) ? card : nickname;
+                if (onebotConfig.getNicknameClean()) {
+                    name = sanitizeDisplayName(name);
+                }
+
+                if (name != null && !name.isEmpty()) {
+                    groupMemberNames.put(userId, name);
+                }
+            }
+
+            VMessagePlugin.get().getLogger().debug("Loaded {} OneBot group member names", groupMemberNames.size());
+        } catch (Exception e) {
+            VMessagePlugin.get().getLogger().warn("Failed to load OneBot group member list: {}", e.getMessage());
+        }
     }
 
     private class OneBotCallbackHandler extends AbstractHandler {
@@ -228,6 +343,17 @@ public class OneBotListener {
                             senderRole = sender.get("role").getAsString();
                         }
                     }
+
+                    // Prefer cached group member name (card > nickname)
+                    if (senderId != null && !senderId.isEmpty()) {
+                        String cachedName = groupMemberNames.get(senderId);
+                        if (cachedName != null && !cachedName.isEmpty()) {
+                            senderName = cachedName;
+                        }
+                    }
+                    if (config.getNicknameClean()) {
+                        senderName = sanitizeDisplayName(senderName);
+                    }
                     
                     // Format message using configured format
                     String format = config.getFormat().getToGame();
@@ -265,10 +391,18 @@ public class OneBotListener {
 
                 if ("text".equals(type)) {
                     sb.append(data.get("text").getAsString());
+                } else if ("at".equals(type)) {
+                    String qq = data.has("qq") ? data.get("qq").getAsString() : "";
+                    if (!qq.isEmpty()) {
+                        String name = groupMemberNames.getOrDefault(qq, qq);
+                        if (ConfigManager.get().getConfig().getOnebot().getNicknameClean()) {
+                            name = sanitizeDisplayName(name);
+                        }
+                        sb.append("@").append(name);
+                    }
                 } else if ("image".equals(type)) {
                     String url = data.get("url").getAsString();
-                    String summary = data.get("summary").getAsString();
-                    sb.append("[[CICode,url=").append(url).append(",name=").append(summary).append("]]");
+                    sb.append("[[CICode,url=").append(url).append(",name=媒体消息]]");
                 }
             }
             return sb.toString();

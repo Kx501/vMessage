@@ -143,6 +143,8 @@ class OneBotConfig {
     var accessTokenCallback = ""
     @Comment("Target QQ group ID")
     var groupId = ""
+    @Comment("remove Unicode control characters from nickname to avoid display order issue")
+    var nicknameClean = true
     var callback = OneBotCallbackConfig()
     var forwardToQq = OneBotForwardToQQConfig()
     @Comment("Whether to forward QQ group messages to game")

@@ -30,6 +30,7 @@ messages:
     # %end-date% - End date of the mute
     # %moderator% - Moderator who muted the player
     muted-message: <red>You are muted and cannot send messages.</red>
+
   join:
     enabled: true
     
@@ -38,28 +39,31 @@ messages:
     # %prefix% - LuckPerms Prefix
     # %suffix% - LuckPerms Suffix
     format: <dark_gray>(<green>+<dark_gray>) <gray>%player%
+
   leave:
     enabled: true
-    
+
     # %player% - Player
     # %server% - Player's Last Server
     # %prefix% - LuckPerms Prefix
     # %suffix% - LuckPerms Suffix
     format: <dark_gray>(<red>-<dark_gray>) <gray>%player%
+
   change:
     enabled: true
-    
+
     # %player% - Player
     # %old_server% - Player's Previous Server
     # %new_server% - Player's New Server
     # %prefix% - LuckPerms Prefix
     # %suffix% - LuckPerms Suffix
     format: <dark_gray>(<gold>•<dark_gray>) <gray>%player% <dark_gray>(<gold>%old_server%→%new_server%<dark_gray>)
+
 commands:
   # /broadcast, /bcast, /bc
   broadcast:
     enabled: true
-    
+
     # %player% - Player
     # %message% - Message
     # %server% - Player's Current Server
@@ -118,15 +122,16 @@ server-aliases:
   lobby1: Lobby
   lobby2: Lobby
 
+
 # OneBot protocol integration for QQ group message syncing
 onebot:
   enabled: true
-  
   # NapCat HTTP API base URL (without path, path is fixed as /send_group_msg)
   api-url: http://localhost:6727
   # Target QQ group ID
   group-id: '123456789'
-  
+  # remove Unicode control characters from nickname to avoid display order issue
+  nickname-clean: true
   
   callback:
     enabled: true
@@ -142,7 +147,7 @@ onebot:
   # Access token for verifying incoming callbacks from NapCat (leave empty to disable authentication)
   access-token-callback: ''
   
-  
+
   forward-to-qq:
     # Whether to forward chat messages to QQ group
     chat: true
@@ -154,7 +159,6 @@ onebot:
     change: false
     # Whether to forward broadcast messages to QQ group
     broadcast: true
-
     # Delay time in seconds before sending leave messages.
     # If player rejoins during this delay,
     # the leave message is cancelled and the join message is filtered (not sent).
