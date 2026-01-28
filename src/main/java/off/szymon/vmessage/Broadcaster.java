@@ -26,6 +26,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import com.velocitypowered.api.scheduler.ScheduledTask;
 
 public class Broadcaster {
@@ -36,6 +37,9 @@ public class Broadcaster {
     private OneBotClient oneBotClient;
     // Pending leave messages (for delay and rejoin filtering)
     private final ConcurrentHashMap<String, ScheduledTask> pendingLeaveTasks = new ConcurrentHashMap<>();
+    // Pattern for QQ at from game chat: @ + 5-11 digits, e.g. @1234567
+    // Note: this only supports pure numeric QQ ids; texts like test@1234567.com may be partially treated as QQ at.
+    private static final Pattern QQ_AT_PATTERN = Pattern.compile("@([0-9]{5,11})");
 
     public Broadcaster() {
         serverAliases = new HashMap<>();
@@ -323,6 +327,19 @@ public class Broadcaster {
         return ConfigManager.get().getConfig().getMessages().getChat().getAllowMiniMessage() ? input : MiniMessage.miniMessage().escapeTags(input);
     }
 
+    /**
+     * Convert in-game @QQ patterns (e.g. @2483654847) into QQ group at CQ codes for OneBot/NapCat.
+     * <p>
+     * Only pure numeric QQ ids are supported. This may affect strings like "test@1234567.com",
+     * whose "@1234567" part will be interpreted as a QQ at.
+     */
+    private String convertGameAtToQqAt(String message) {
+        if (message == null || message.isEmpty()) {
+            return message;
+        }
+        return QQ_AT_PATTERN.matcher(message).replaceAll("[CQ:at,qq=$1]");
+    }
+
     private String formatMessageForQQ(String type, String player, String message, String server, String oldServer) {
         var formatConfig = ConfigManager.get().getConfig().getOnebot().getFormat();
         String format;
@@ -352,7 +369,9 @@ public class Broadcaster {
             format = format.replace("%player%", player);
         }
         if (message != null) {
-            format = format.replace("%message%", message);
+            // Convert in-game @QQ to CQ at codes before sending to QQ group
+            String qqMessage = convertGameAtToQqAt(message);
+            format = format.replace("%message%", qqMessage);
         }
         if (server != null) {
             format = format.replace("%server%", server);
