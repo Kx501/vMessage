@@ -126,64 +126,62 @@ server-aliases:
 # OneBot protocol integration for QQ group message syncing
 onebot:
   enabled: true
-  # NapCat HTTP API base URL (without path, path is fixed as /send_group_msg)
+
+  # NapCat HTTP API base URL
   api-url: http://localhost:6727
-  # Target QQ group ID
   group-id: '123456789'
+
+  # Access token for sending messages to NapCat API (leave empty to disable authentication)
+  access-token-send: ''
+
   # remove Unicode control characters from nickname to avoid display order issue
   nickname-clean: true
   
+  # Callback server configuration
   callback:
     enabled: true
-    # Host to listen on for HTTP callback
     host: 0.0.0.0
-    # Port to listen on for HTTP callback
     port: 8080
-    # Callback path
     path: /onebot/callback
-  
-  # Access token for sending messages to NapCat API (leave empty to disable authentication)
-  access-token-send: ''
+
   # Access token for verifying incoming callbacks from NapCat (leave empty to disable authentication)
   access-token-callback: ''
   
-
+  # Whether to forward messages to QQ group
   forward-to-qq:
-    # Whether to forward chat messages to QQ group
     chat: true
-    # Whether to forward join messages to QQ group
     join: true
-    # Whether to forward leave messages to QQ group
     leave: true
-    # Whether to forward server change messages to QQ group
     change: false
-    # Whether to forward broadcast messages to QQ group
     broadcast: true
+    format:
+      
+      # %player% - Player name
+      # %message% - Message content
+      # %server% - Server name
+      # %old_server% - Previous server
+      # %new_server% - New server
+      chat: '[%server%] %player%: %message%'
+      join: '[游戏] %player% 加入了服务器'
+      leave: '[游戏] %player% 离开了服务器'
+      change: '[游戏] %player% 从 %old_server% 切换到 %new_server%'
+      broadcast: '[广播] %message%'
+
     # Delay time in seconds before sending leave messages.
     # If player rejoins during this delay,
     # the leave message is cancelled and the join message is filtered (not sent).
     leave-delay: 15
   
   # Whether to forward QQ group messages to game
-  forward-to-game: true
-  format:
-    # %player% - Player name
-    # %message% - Message content
-    # %server% - Server name
-    # %old_server% - Previous server
-    # %new_server% - New server
-    chat: '[%server%] %player%: %message%'
-    join: '[游戏] %player% 加入了服务器'
-    leave: '[游戏] %player% 离开了服务器'
-    change: '[游戏] %player% 从 %old_server% 切换到 %new_server%'
-    broadcast: '[广播] %message%'
-    
-    # Message format for forwarding QQ group messages to game
-    # %message% - Message content from QQ
-    # %sender% - Sender nickname
-    # %sender_id% - Sender QQ number
-    # %sender_role% - Sender role (owner/admin/member)
-    to-game: '[QQ群] %sender%: %message%'
+  forward-to-game:
+    enabled: true
+    format:
+      # Message format for forwarding QQ group messages to game
+      # %message% - Message content from QQ
+      # %sender% - Sender nickname
+      # %sender_id% - Sender QQ number
+      # %sender_role% - Sender role (owner/admin/member)
+      to-game: '[QQ群] %sender%: %message%'
   
   # Enable debug logging for OneBot integration (shows detailed token verification and request information)
   debug: true

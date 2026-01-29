@@ -316,7 +316,7 @@ public class OneBotListener {
                 }
 
                 // Check if forwarding to game is enabled
-                if (!ConfigManager.get().getConfig().getOnebot().getForwardToGame()) {
+                if (!ConfigManager.get().getConfig().getOnebot().getForwardToGame().getEnabled()) {
                     response.setStatus(HttpServletResponse.SC_OK);
                     response.getWriter().write("{}");
                     return;
@@ -356,7 +356,7 @@ public class OneBotListener {
                     }
                     
                     // Format message using configured format
-                    String format = config.getFormat().getToGame();
+                    String format = config.getForwardToGame().getFormat().getToGame();
                     String formattedMessage = format
                             .replace("%message%", messageText)
                             .replace("%sender%", senderName)

@@ -135,23 +135,21 @@ class ServerAliasesConfig {
 @ConfigSerializable
 class OneBotConfig {
     var enabled = false
-    @Comment("NapCat HTTP API base URL (without path, path is fixed as /send_group_msg)")
+    @Comment("NapCat HTTP API base URL")
     var apiUrl = "http://localhost:6727"
+    var groupId = ""
     @Comment("Access token for sending messages to NapCat API (leave empty to disable authentication)")
     var accessTokenSend = ""
-    @Comment("Access token for verifying incoming callbacks from NapCat (leave empty to disable authentication)")
-    var accessTokenCallback = ""
-    @Comment("Target QQ group ID")
-    var groupId = ""
     @Comment("remove Unicode control characters from nickname to avoid display order issue")
     var nicknameClean = true
     var callback = OneBotCallbackConfig()
+    @Comment("Access token for verifying incoming callbacks from NapCat (leave empty to disable authentication)")
+    var accessTokenCallback = ""
     var forwardToQq = OneBotForwardToQQConfig()
     @Comment("Whether to forward QQ group messages to game")
-    var forwardToGame = true
+    var forwardToGame = OneBotForwardToGameConfig()
     @Comment("Enable debug logging for OneBot integration (shows detailed token verification and request information)")
     var debug = false
-    var format = OneBotFormatConfig()
 }
 
 @ConfigSerializable
@@ -167,28 +165,34 @@ class OneBotCallbackConfig {
 
 @ConfigSerializable
 class OneBotForwardToQQConfig {
-    @Comment("Whether to forward chat messages to QQ group")
     var chat = true
-    @Comment("Whether to forward join messages to QQ group")
     var join = true
-    @Comment("Whether to forward leave messages to QQ group")
     var leave = true
-    @Comment("Whether to forward server change messages to QQ group")
     var change = true
-    @Comment("Whether to forward broadcast messages to QQ group")
     var broadcast = true
+    var format = OneBotFormatToQQConfig()
     @Comment("Delay time in seconds before sending leave messages. If player rejoins during this delay, the leave message is cancelled and the join message is filtered (not sent)")
     var leaveDelay = 15
 }
 
 @ConfigSerializable
-class OneBotFormatConfig {
+class OneBotFormatToQQConfig {
     @Comment("%player% - Player name\n%message% - Message content\n%server% - Server name\n%old_server% - Previous server\n%new_server% - New server")
-    var chat = "[游戏] %player%: %message%"
+    var chat = "[%server%] %player%: %message%"
     var join = "[游戏] %player% 加入了服务器"
     var leave = "[游戏] %player% 离开了服务器"
     var change = "[游戏] %player% 从 %old_server% 切换到 %new_server%"
     var broadcast = "[广播] %message%"
+}
+
+@ConfigSerializable
+class OneBotForwardToGameConfig {
+    var enabled = true
+    var format = OneBotToGameFormatConfig()
+}
+
+@ConfigSerializable
+class OneBotToGameFormatConfig {
     @Comment("Message format for forwarding QQ group messages to game\n%message% - Message content from QQ\n%sender% - Sender nickname\n%sender_id% - Sender QQ number\n%sender_role% - Sender role (owner/admin/member)")
     var toGame = "[QQ群] %sender%: %message%"
 }

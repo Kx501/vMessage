@@ -341,7 +341,7 @@ public class Broadcaster {
     }
 
     private String formatMessageForQQ(String type, String player, String message, String server, String oldServer) {
-        var formatConfig = ConfigManager.get().getConfig().getOnebot().getFormat();
+        var formatConfig = ConfigManager.get().getConfig().getOnebot().getForwardToQq().getFormat();
         String format;
         
         switch (type) {
