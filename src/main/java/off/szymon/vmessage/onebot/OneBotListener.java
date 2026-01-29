@@ -217,7 +217,7 @@ public class OneBotListener {
                 // Verify token if configured
                 // Use accessTokenCallback only
                 var config = ConfigManager.get().getConfig().getOnebot();
-                String configuredToken = config.getAccessTokenCallback();
+                String configuredToken = config.getCallback().getAccessTokenCallback();
                 if (configuredToken != null && !configuredToken.isEmpty()) {
                     String requestToken = null;
                     String tokenSource = null;

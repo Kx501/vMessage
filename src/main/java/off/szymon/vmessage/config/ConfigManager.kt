@@ -16,7 +16,6 @@ import com.google.common.io.Files
 import off.szymon.vmessage.VMessagePlugin
 import off.szymon.vmessage.config.tree.MainConfig
 import org.spongepowered.configurate.CommentedConfigurationNode
-import org.spongepowered.configurate.ConfigurationNode
 import org.spongepowered.configurate.loader.HeaderMode
 import org.spongepowered.configurate.yaml.NodeStyle
 import org.spongepowered.configurate.yaml.YamlConfigurationLoader
@@ -84,39 +83,12 @@ class ConfigManager {
         }
         root = loader.load()
         config = root.get(MainConfig::class.java) ?: MainConfig()
-        val needsSave = fileCreated || hasMissingKeys(root)
-        if (needsSave) {
-            if (!fileCreated && config.backupConfig) {
-                @Suppress("UnstableApiUsage")
-                Files.copy(file, File(file.parentFile, "$fileName.bak"))
-            }
-            config.backupConfig = false
-            save()
-        } else {
-            config.backupConfig = false
+        if (!fileCreated && config.backupConfig) {
+            @Suppress("UnstableApiUsage")
+            Files.copy(file, File(file.parentFile, "$fileName.bak"))
         }
-    }
-
-    /**
-     * Returns true if the loaded root is missing any key that exists in the default MainConfig tree.
-     * Used to decide whether to save (to add missing keys) without rewriting the file on every reload.
-     */
-    private fun hasMissingKeys(loaded: ConfigurationNode): Boolean {
-        val defaultRoot = CommentedConfigurationNode.root(loader.defaultOptions())
-        defaultRoot.set(MainConfig::class.java, MainConfig())
-        return hasMissingKeysRecursive(loaded, defaultRoot)
-    }
-
-    private fun hasMissingKeysRecursive(loaded: ConfigurationNode, default: ConfigurationNode): Boolean {
-        if (default.virtual()) return false
-        if (!default.childrenMap().isEmpty()) {
-            for ((key, defaultChild) in default.childrenMap()) {
-                val loadedChild = loaded.node(key)
-                if (loadedChild.virtual() && !defaultChild.virtual()) return true
-                if (hasMissingKeysRecursive(loadedChild, defaultChild)) return true
-            }
-        }
-        return false
+        config.backupConfig = false
+        save()
     }
 
     fun save() {

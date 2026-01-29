@@ -137,15 +137,18 @@ onebot:
   # remove Unicode control characters from nickname to avoid display order issue
   nickname-clean: true
   
-  # Callback server configuration
   callback:
     enabled: true
+    
+    # Host to listen on for HTTP callback
     host: 0.0.0.0
     port: 8080
+    
+    # Callback path
     path: /onebot/callback
 
-  # Access token for verifying incoming callbacks from NapCat (leave empty to disable authentication)
-  access-token-callback: ''
+    # Access token for verifying incoming callbacks from NapCat (leave empty to disable authentication)
+    access-token-callback: ''
   
   # Whether to forward messages to QQ group
   forward-to-qq:

@@ -143,8 +143,6 @@ class OneBotConfig {
     @Comment("remove Unicode control characters from nickname to avoid display order issue")
     var nicknameClean = true
     var callback = OneBotCallbackConfig()
-    @Comment("Access token for verifying incoming callbacks from NapCat (leave empty to disable authentication)")
-    var accessTokenCallback = ""
     var forwardToQq = OneBotForwardToQQConfig()
     @Comment("Whether to forward QQ group messages to game")
     var forwardToGame = OneBotForwardToGameConfig()
@@ -157,10 +155,11 @@ class OneBotCallbackConfig {
     var enabled = true
     @Comment("Host to listen on for HTTP callback")
     var host = "0.0.0.0"
-    @Comment("Port to listen on for HTTP callback")
     var port = 8080
     @Comment("Callback path")
     var path = "/onebot/callback"
+    @Comment("Access token for verifying incoming callbacks from NapCat (leave empty to disable authentication)")
+    var accessTokenCallback = ""
 }
 
 @ConfigSerializable
