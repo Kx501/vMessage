@@ -49,6 +49,8 @@ class ChatConfig {
     var format = "%prefix% <b>%player%:</b> %message%"
     @Comment("Whether to allow players to use MiniMessage in their messages")
     var allowMiniMessage = false
+    @Comment("Whether to parse vanilla legacy color/format codes (&0-&f, &l, &n, &o, &r, &k, &m, &x etc.).")
+    var allowLegacyColorCodes = true
     @Comment("The message to send when a muted player tries to send a message\n%player% - Player\n%message% - Message\n%server% - Player's Current Server\n%prefix% - LuckPerms Prefix\n%suffix% - LuckPerms Suffix\n%reason% - Reason for muting\n%end-date% - End date of the mute\n%moderator% - Moderator who muted the player")
     var mutedMessage = "<red>You are muted and cannot send messages.</red>"
 }
@@ -93,6 +95,8 @@ class BroadcastConfig {
     var allowByDefault = false
     @Comment("Whether to allow players to use MiniMessage in their broadcast messages\nMiniMessage is always allowed for console broadcasts")
     var allowMiniMessage = true
+    @Comment("Whether to parse vanilla legacy color/format codes (&0-&f, &l, &n, &o, &r, &k, &m, &x etc.).")
+    var allowLegacyColorCodes = true
 }
 
 @ConfigSerializable
@@ -102,6 +106,8 @@ class MessageConfig {
     var format = MessageFormatConfig()
     @Comment("Whether to allow players to use MiniMessage in their private messages")
     var allowMiniMessage = false
+    @Comment("Whether to parse vanilla legacy color/format codes (&0-&f, &l, &n, &o, &r, &k, &m, &x etc.).")
+    var allowLegacyColorCodes = true
     @Comment("If false, players will need the permission 'vmessage.command.message' to use the /message command\n" +
             "If true, all players can use the /message command by default unless they have the permission 'vmessage.command.message' set to false\n" +
             "This also affects the /reply command")
@@ -142,6 +148,8 @@ class OneBotConfig {
     var accessTokenSend = ""
     @Comment("remove Unicode control characters from nickname to avoid display order issue")
     var nicknameClean = true
+    @Comment("When true, strip all formatting from message content when forwarding to QQ (only %message% etc. become plain text)")
+    var stripFormattingInQq = true
     var callback = OneBotCallbackConfig()
     var forwardToQq = OneBotForwardToQQConfig()
     @Comment("Whether to forward QQ group messages to game")

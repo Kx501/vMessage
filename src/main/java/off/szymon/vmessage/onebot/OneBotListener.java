@@ -21,14 +21,16 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import off.szymon.vmessage.VMessagePlugin;
 import off.szymon.vmessage.config.ConfigManager;
+import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Response;
 import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.handler.AbstractHandler;
-
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import java.io.IOException;
+import org.eclipse.jetty.util.Callback;
+import org.eclipse.jetty.util.Promise;
+import org.eclipse.jetty.io.Content;
+import org.eclipse.jetty.http.HttpHeader;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -36,7 +38,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CompletableFuture;
 
 public class OneBotListener {
 
@@ -195,7 +196,13 @@ public class OneBotListener {
         }
     }
 
-    private class OneBotCallbackHandler extends AbstractHandler {
+    private void sendJsonResponse(Response response, int status, String body, Callback callback) {
+        response.setStatus(status);
+        response.getHeaders().put(HttpHeader.CONTENT_TYPE, "application/json; charset=utf-8");
+        response.write(true, ByteBuffer.wrap(body.getBytes(StandardCharsets.UTF_8)), callback);
+    }
+
+    private class OneBotCallbackHandler extends Handler.Abstract {
         private final String path;
 
         public OneBotCallbackHandler(String path) {
@@ -203,181 +210,123 @@ public class OneBotListener {
         }
 
         @Override
-        public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response)
-                throws IOException {
-            if (!request.getMethod().equals("POST") || !target.equals(path)) {
-                return;
+        public boolean handle(Request request, Response response, Callback callback) {
+            String requestPath = Request.getPathInContext(request);
+            if (!"POST".equals(request.getMethod()) || !requestPath.equals(path)) {
+                return false;
             }
 
-            baseRequest.setHandled(true);
-            
-            response.setContentType("application/json; charset=utf-8");
+            Content.Source.asString(request, StandardCharsets.UTF_8, new Promise<>() {
+                @Override
+                public void succeeded(String body) {
+                    try {
+                        var config = ConfigManager.get().getConfig().getOnebot();
+                    String configuredToken = config.getCallback().getAccessTokenCallback();
+                    if (configuredToken != null && !configuredToken.isEmpty()) {
+                        String authHeader = request.getHeaders().get(HttpHeader.AUTHORIZATION);
+                        if (authHeader == null || !authHeader.startsWith("Bearer ") || !authHeader.substring(7).equals(configuredToken)) {
+                            VMessagePlugin.get().getLogger().warn("OneBot callback token verification failed - expected Authorization: Bearer <token>");
+                            sendJsonResponse(response, 401, "{}", callback);
+                            return;
+                        }
+                    }
 
-            try {
-                // Verify token if configured
-                // Use accessTokenCallback only
-                var config = ConfigManager.get().getConfig().getOnebot();
-                String configuredToken = config.getCallback().getAccessTokenCallback();
-                if (configuredToken != null && !configuredToken.isEmpty()) {
-                    String requestToken = null;
-                    String tokenSource = null;
-                    
-                    // Check Authorization header first (Bearer token)
-                    String authHeader = request.getHeader("Authorization");
-                    if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                        requestToken = authHeader.substring(7);
-                        tokenSource = "Authorization header";
-                    } else {
-                        // Check X-Token header
-                        String xTokenHeader = request.getHeader("X-Token");
-                        if (xTokenHeader != null && !xTokenHeader.isEmpty()) {
-                            requestToken = xTokenHeader;
-                            tokenSource = "X-Token header";
-                        } else {
-                            // Check X-Access-Token header
-                            String xAccessTokenHeader = request.getHeader("X-Access-Token");
-                            if (xAccessTokenHeader != null && !xAccessTokenHeader.isEmpty()) {
-                                requestToken = xAccessTokenHeader;
-                                tokenSource = "X-Access-Token header";
-                            } else {
-                                // Check URL query parameters
-                                String accessTokenParam = request.getParameter("access_token");
-                                if (accessTokenParam != null && !accessTokenParam.isEmpty()) {
-                                    requestToken = accessTokenParam;
-                                    tokenSource = "access_token query parameter";
+                    if (config.getDebug()) {
+                        String bodyPreview = body.length() > 2000 ? body.substring(0, 2000) + "... (truncated)" : body;
+                        VMessagePlugin.get().getLogger().info("OneBot callback request body: {}", bodyPreview);
+                    }
+
+                    JsonObject event = JsonParser.parseString(body).getAsJsonObject();
+
+                    String postType = event.has("post_type") ? event.get("post_type").getAsString() : "";
+                    String messageType = event.has("message_type") ? event.get("message_type").getAsString() : "";
+
+                    if (!"message".equals(postType) || !"group".equals(messageType)) {
+                        sendJsonResponse(response, 200, "{}", callback);
+                        return;
+                    }
+
+                    String configuredGroupId = ConfigManager.get().getConfig().getOnebot().getGroupId();
+                    if (configuredGroupId != null && !configuredGroupId.isEmpty()) {
+                        String eventGroupId = null;
+                        if (event.has("group_id")) {
+                            if (event.get("group_id").isJsonPrimitive()) {
+                                if (event.get("group_id").getAsJsonPrimitive().isNumber()) {
+                                    eventGroupId = String.valueOf(event.get("group_id").getAsLong());
                                 } else {
-                                    String tokenParam = request.getParameter("token");
-                                    if (tokenParam != null && !tokenParam.isEmpty()) {
-                                        requestToken = tokenParam;
-                                        tokenSource = "token query parameter";
-                                    }
+                                    eventGroupId = event.get("group_id").getAsString();
                                 }
                             }
                         }
+
+                        if (eventGroupId == null || !eventGroupId.equals(configuredGroupId)) {
+                            sendJsonResponse(response, 200, "{}", callback);
+                            return;
+                        }
                     }
-                    
-                    if (requestToken == null || !requestToken.equals(configuredToken)) {
-                        // Log error with partial token info (first 3 chars) for debugging
-                        String tokenPreview = requestToken != null && requestToken.length() > 3 
-                            ? requestToken.substring(0, 3) + "..." 
-                            : (requestToken != null ? requestToken : "null");
-                        String configTokenPreview = configuredToken.length() > 3 
-                            ? configuredToken.substring(0, 3) + "..." 
-                            : configuredToken;
-                        VMessagePlugin.get().getLogger().warn("OneBot callback token verification failed - Received token from {}: {}, Expected: {}", 
-                            tokenSource != null ? tokenSource : "unknown", tokenPreview, configTokenPreview);
-                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                        response.getWriter().write("{}");
+
+                    if (!ConfigManager.get().getConfig().getOnebot().getForwardToGame().getEnabled()) {
+                        sendJsonResponse(response, 200, "{}", callback);
                         return;
                     }
-                }
 
-                String body = new String(request.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                
-                // Debug logging - show request body
-                if (config.getDebug()) {
-                    String bodyPreview = body.length() > 2000 ? body.substring(0, 2000) + "... (truncated)" : body;
-                    VMessagePlugin.get().getLogger().info("OneBot callback request body: {}", bodyPreview);
-                }
-                
-                JsonObject event = JsonParser.parseString(body).getAsJsonObject();
+                    String messageText = extractMessageText(event);
 
-                // Check if it's a group message event
-                String postType = event.has("post_type") ? event.get("post_type").getAsString() : "";
-                String messageType = event.has("message_type") ? event.get("message_type").getAsString() : "";
+                    if (messageText != null && !messageText.isEmpty()) {
+                        String senderName = "";
+                        String senderId = "";
+                        String senderRole = "";
 
-                if (!"message".equals(postType) || !"group".equals(messageType)) {
-                    response.setStatus(HttpServletResponse.SC_OK);
-                    response.getWriter().write("{}");
-                    return;
-                }
-
-                // Filter by group ID if configured
-                String configuredGroupId = ConfigManager.get().getConfig().getOnebot().getGroupId();
-                if (configuredGroupId != null && !configuredGroupId.isEmpty()) {
-                    String eventGroupId = null;
-                    if (event.has("group_id")) {
-                        if (event.get("group_id").isJsonPrimitive()) {
-                            // Handle both number and string types
-                            if (event.get("group_id").getAsJsonPrimitive().isNumber()) {
-                                eventGroupId = String.valueOf(event.get("group_id").getAsLong());
-                            } else {
-                                eventGroupId = event.get("group_id").getAsString();
+                        if (event.has("sender") && event.get("sender").isJsonObject()) {
+                            JsonObject sender = event.get("sender").getAsJsonObject();
+                            if (sender.has("nickname")) {
+                                senderName = sender.get("nickname").getAsString();
+                            }
+                            if (sender.has("user_id")) {
+                                senderId = String.valueOf(sender.get("user_id").getAsLong());
+                            }
+                            if (sender.has("role")) {
+                                senderRole = sender.get("role").getAsString();
                             }
                         }
+
+                        if (senderId != null && !senderId.isEmpty()) {
+                            String cachedName = groupMemberNames.get(senderId);
+                            if (cachedName != null && !cachedName.isEmpty()) {
+                                senderName = cachedName;
+                            }
+                        }
+                        if (config.getNicknameClean()) {
+                            senderName = sanitizeDisplayName(senderName);
+                        }
+
+                        String format = config.getForwardToGame().getFormat().getToGame();
+                        String formattedMessage = format
+                                .replace("%message%", messageText)
+                                .replace("%sender%", senderName)
+                                .replace("%sender_id%", senderId)
+                                .replace("%sender_role%", senderRole);
+
+                        String finalFormattedMessage = formattedMessage;
+                        proxyServer.getScheduler().buildTask(VMessagePlugin.get(), () -> {
+                            Component message = MiniMessage.miniMessage().deserialize(finalFormattedMessage);
+                            proxyServer.sendMessage(message);
+                        }).schedule();
                     }
-                    
-                    if (eventGroupId == null || !eventGroupId.equals(configuredGroupId)) {
-                        // Group ID doesn't match, ignore this message
-                        response.setStatus(HttpServletResponse.SC_OK);
-                        response.getWriter().write("{}");
-                        return;
+
+                    sendJsonResponse(response, 200, "{}", callback);
+                    } catch (Exception e) {
+                        VMessagePlugin.get().getLogger().warn("Error processing OneBot callback: {}", e.getMessage());
+                        sendJsonResponse(response, 500, "{}", callback);
                     }
                 }
 
-                // Check if forwarding to game is enabled
-                if (!ConfigManager.get().getConfig().getOnebot().getForwardToGame().getEnabled()) {
-                    response.setStatus(HttpServletResponse.SC_OK);
-                    response.getWriter().write("{}");
-                    return;
+                @Override
+                public void failed(Throwable failure) {
+                    Response.writeError(request, response, callback, failure);
                 }
-
-                // Extract message content
-                String messageText = extractMessageText(event);
-
-                if (messageText != null && !messageText.isEmpty()) {
-                    // Extract sender information
-                    String senderName = "";
-                    String senderId = "";
-                    String senderRole = "";
-                    
-                    if (event.has("sender") && event.get("sender").isJsonObject()) {
-                        JsonObject sender = event.get("sender").getAsJsonObject();
-                        if (sender.has("nickname")) {
-                            senderName = sender.get("nickname").getAsString();
-                        }
-                        if (sender.has("user_id")) {
-                            senderId = String.valueOf(sender.get("user_id").getAsLong());
-                        }
-                        if (sender.has("role")) {
-                            senderRole = sender.get("role").getAsString();
-                        }
-                    }
-
-                    // Prefer cached group member name (card > nickname)
-                    if (senderId != null && !senderId.isEmpty()) {
-                        String cachedName = groupMemberNames.get(senderId);
-                        if (cachedName != null && !cachedName.isEmpty()) {
-                            senderName = cachedName;
-                        }
-                    }
-                    if (config.getNicknameClean()) {
-                        senderName = sanitizeDisplayName(senderName);
-                    }
-                    
-                    // Format message using configured format
-                    String format = config.getForwardToGame().getFormat().getToGame();
-                    String formattedMessage = format
-                            .replace("%message%", messageText)
-                            .replace("%sender%", senderName)
-                            .replace("%sender_id%", senderId)
-                            .replace("%sender_role%", senderRole);
-                    
-                    // Forward to game asynchronously using Velocity scheduler
-                    String finalFormattedMessage = formattedMessage;
-                    proxyServer.getScheduler().buildTask(VMessagePlugin.get(), () -> {
-                        Component message = MiniMessage.miniMessage().deserialize(finalFormattedMessage);
-                        proxyServer.sendMessage(message);
-                    }).schedule();
-                }
-
-                response.setStatus(HttpServletResponse.SC_OK);
-                response.getWriter().write("{}");
-            } catch (Exception e) {
-                VMessagePlugin.get().getLogger().warn("Error processing OneBot callback: {}", e.getMessage());
-                response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-                response.getWriter().write("{}");
-            }
+            });
+            return true;
         }
 
         private String extractMessageText(JsonObject event) {

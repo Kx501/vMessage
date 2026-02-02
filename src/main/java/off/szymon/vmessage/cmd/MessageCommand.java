@@ -19,7 +19,6 @@ import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.velocitypowered.api.command.BrigadierCommand;
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.proxy.Player;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import off.szymon.vmessage.VMessagePlugin;
 import off.szymon.vmessage.compatibility.LuckPermsCompatibilityProvider;
 import off.szymon.vmessage.config.ConfigManager;
@@ -64,9 +63,8 @@ public class MessageCommand {
                                                 return Command.SINGLE_SUCCESS;
                                             }
                                             String message = StringArgumentType.getString(ctx, "message");
-                                            if (!ConfigManager.get().getConfig().getCommands().getMessage().getAllowMiniMessage()) {
-                                                message = MiniMessage.miniMessage().escapeTags(message);
-                                            }
+                                            var msgConfig = ConfigManager.get().getConfig().getCommands().getMessage();
+                                            message = VMessagePlugin.get().getBroadcaster().processMessageContent(message, msgConfig.getAllowLegacyColorCodes(), msgConfig.getAllowMiniMessage());
 
                                             /* Placeholders */
 

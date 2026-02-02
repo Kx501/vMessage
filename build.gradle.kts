@@ -66,12 +66,16 @@ dependencies {
     compileOnly("space.arim.libertybans:bans-api:1.1.0")
     compileOnly("com.gitlab.ruany:LiteBansAPI:0.6.1")
 
+    /* Adventure text serializers (legacy & codes, plain text for QQ) */
+    implementation("net.kyori:adventure-text-serializer-legacy:4.17.0")
+    implementation("net.kyori:adventure-text-serializer-plain:4.17.0")
+
     /* Usage Statistics */
     implementation("org.bstats:bstats-velocity:3.1.0")
 
     /* HTTP Server for OneBot callback */
-    implementation("org.eclipse.jetty:jetty-server:10.0.18")
-    implementation("org.eclipse.jetty:jetty-servlet:10.0.18")
+    implementation("org.eclipse.jetty:jetty-server:12.0.17")
+    implementation("org.eclipse.jetty.ee10:jetty-ee10-servlet:12.0.17")
     implementation("com.google.code.gson:gson:2.10.1")
 }
 
@@ -120,7 +124,8 @@ tasks.shadowJar {
     relocate("org.spongepowered.configurate", "off.szymon.vmessage.libs.configurate")
     relocate("org.bstats", "off.szymon.vmessage.libs.bstats")
     relocate("org.eclipse.jetty", "off.szymon.vmessage.libs.jetty")
-    relocate("javax.servlet", "off.szymon.vmessage.libs.servlet")
+    relocate("org.eclipse.jetty.ee10", "off.szymon.vmessage.libs.jetty.ee10")
+    relocate("jakarta.servlet", "off.szymon.vmessage.libs.servlet")
 }
 
 tasks.build {

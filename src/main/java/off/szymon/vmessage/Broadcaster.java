@@ -13,6 +13,9 @@
 package off.szymon.vmessage;
 
 import com.velocitypowered.api.proxy.Player;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import off.szymon.vmessage.compatibility.LuckPermsCompatibilityProvider;
 import off.szymon.vmessage.config.ConfigManager;
@@ -60,12 +63,15 @@ public class Broadcaster {
     public void message(Player player, String message) {
         if (!ConfigManager.get().getConfig().getMessages().getChat().getEnabled()) return;
 
+        var chatConfig = ConfigManager.get().getConfig().getMessages().getChat();
+        String processedMessage = processMessageContent(message, chatConfig.getAllowLegacyColorCodes(), chatConfig.getAllowMiniMessage());
+
         String msg = ConfigManager.get().getConfig().getMessages().getChat().getFormat();
 
         //noinspection OptionalGetWithoutIsPresent
         msg = msg
                 .replace("%player%", player.getUsername())
-                .replace("%message%", escapeMiniMessage(message))
+                .replace("%message%", processedMessage)
                 .replace("%server%", parseAlias(player.getCurrentServer().get().getServerInfo().getName()));
         if (lp != null) {
             LuckPermsCompatibilityProvider.PlayerData data = lp.getMetaData(player);
@@ -85,7 +91,7 @@ public class Broadcaster {
         
         // Send to OneBot/QQ group if enabled
         if (oneBotClient != null && ConfigManager.get().getConfig().getOnebot().getForwardToQq().getChat()) {
-            String qqMessage = formatMessageForQQ("chat", player.getUsername(), escapeMiniMessage(message), parseAlias(player.getCurrentServer().get().getServerInfo().getName()), null);
+            String qqMessage = formatMessageForQQ("chat", player.getUsername(), processedMessage, parseAlias(player.getCurrentServer().get().getServerInfo().getName()), null);
             oneBotClient.sendGroupMessage(qqMessage);
         }
     }
@@ -262,14 +268,15 @@ public class Broadcaster {
     }
 
     public void broadcast(String message, @Nullable Player player) {
+        var broadcastConfig = ConfigManager.get().getConfig().getCommands().getBroadcast();
+        // MiniMessage is always allowed for console broadcasts
+        boolean allowMiniMessage = player != null ? broadcastConfig.getAllowMiniMessage() : true;
+        String processedMessage = processMessageContent(message, broadcastConfig.getAllowLegacyColorCodes(), allowMiniMessage);
+
         String msg = ConfigManager.get().getConfig().getCommands().getBroadcast().getFormat();
 
         if (player != null) {
-            if (!ConfigManager.get().getConfig().getCommands().getBroadcast().getAllowMiniMessage()) {
-                msg = msg.replace("%message%", MiniMessage.miniMessage().escapeTags(message));
-            } else {
-                msg = msg.replace("%message%", message);
-            }
+            msg = msg.replace("%message%", processedMessage);
             msg = msg
                 .replace("%player%", player.getUsername())
                 .replace("%server%", parseAlias(player.getCurrentServer().get().getServerInfo().getName()));
@@ -289,7 +296,7 @@ public class Broadcaster {
             }
         } else {
             msg = msg
-                .replace("%message%", message)
+                .replace("%message%", processedMessage)
                 .replace("%player%", "Server")
                 .replace("%server%", "Server")
                 .replace("%suffix%", "")
@@ -303,7 +310,7 @@ public class Broadcaster {
         
         // Send to OneBot/QQ group if enabled
         if (oneBotClient != null && ConfigManager.get().getConfig().getOnebot().getForwardToQq().getBroadcast()) {
-            String qqMessage = formatMessageForQQ("broadcast", player != null ? player.getUsername() : "Server", message, null, null);
+            String qqMessage = formatMessageForQQ("broadcast", player != null ? player.getUsername() : "Server", processedMessage, null, null);
             oneBotClient.sendGroupMessage(qqMessage);
         }
     }
@@ -323,8 +330,26 @@ public class Broadcaster {
         return metaPlaceholders;
     }
 
-    private String escapeMiniMessage(String input) {
-        return ConfigManager.get().getConfig().getMessages().getChat().getAllowMiniMessage() ? input : MiniMessage.miniMessage().escapeTags(input);
+    /**
+     * Process message content: optionally parse legacy & codes, then optionally escape MiniMessage tags.
+     * Step 1: if allowLegacyColorCodes, deserialize with LegacyComponentSerializer.legacyAmpersand() and serialize to MiniMessage string.
+     * Step 2: if !allowMiniMessage, escapeTags on the result.
+     */
+    public String processMessageContent(String input, boolean allowLegacyColorCodes, boolean allowMiniMessage) {
+        if (input == null) return "";
+        String result = input;
+        if (allowLegacyColorCodes) {
+            try {
+                Component component = LegacyComponentSerializer.legacyAmpersand().deserialize(input);
+                result = MiniMessage.miniMessage().serialize(component);
+            } catch (Exception ignored) {
+                // keep result as input
+            }
+        }
+        if (!allowMiniMessage) {
+            result = MiniMessage.miniMessage().escapeTags(result);
+        }
+        return result;
     }
 
     /**
@@ -369,8 +394,17 @@ public class Broadcaster {
             format = format.replace("%player%", player);
         }
         if (message != null) {
+            String qqMessage = message;
+            if (ConfigManager.get().getConfig().getOnebot().getStripFormattingInQq()) {
+                try {
+                    Component component = MiniMessage.miniMessage().deserialize(message);
+                    qqMessage = PlainTextComponentSerializer.plainText().serialize(component);
+                } catch (Exception e) {
+                    qqMessage = MiniMessage.miniMessage().stripTags(message);
+                }
+            }
             // Convert in-game @QQ to CQ at codes before sending to QQ group
-            String qqMessage = convertGameAtToQqAt(message);
+            qqMessage = convertGameAtToQqAt(qqMessage);
             format = format.replace("%message%", qqMessage);
         }
         if (server != null) {

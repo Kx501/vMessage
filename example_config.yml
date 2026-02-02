@@ -20,6 +20,9 @@ messages:
     # Whether to allow players to use MiniMessage in their messages
     allow-mini-message: false
     
+    # Whether to parse vanilla legacy color/format codes (&0-&f, &l, &n, &o, &r, &k, &m, &x etc.).
+    allow-legacy-color-codes: true
+    
     # The message to send when a muted player tries to send a message
     # %player% - Player
     # %message% - Message
@@ -78,6 +81,9 @@ commands:
     # Whether to allow players to use MiniMessage in their broadcast messages
     # MiniMessage is always allowed for console broadcasts
     allow-mini-message: true
+    
+    # Whether to parse vanilla legacy color/format codes (&0-&f, &l, &n, &o, &r, &k, &m, &x etc.).
+    allow-legacy-color-codes: true
   
   # /message, /msg, /whisper, /w
   message:
@@ -99,6 +105,9 @@ commands:
     
     # Whether to allow players to use MiniMessage in their private messages
     allow-mini-message: false
+    
+    # Whether to parse vanilla legacy color/format codes (&0-&f, &l, &n, &o, &r, &k, &m, &x etc.).
+    allow-legacy-color-codes: true
     
     # If false, players will need the permission 'vmessage.command.message' to use the /message command
     # If true, all players can use the /message command by default unless they have the permission 'vmessage.command.message' set to false
@@ -136,6 +145,9 @@ onebot:
 
   # remove Unicode control characters from nickname to avoid display order issue
   nickname-clean: true
+
+  # When true, strip all formatting from message content when forwarding to QQ (only %message% etc. become plain text)
+  strip-formatting-in-qq: true
   
   callback:
     enabled: true
